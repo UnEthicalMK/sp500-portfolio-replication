@@ -1,0 +1,25 @@
+# Data files (too large for GitHub, regenerate with data_pipeline.py)
+data/raw/
+data/processed/
+
+# Saved models (regenerate by running the training scripts)
+models/
+
+# Python environment
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
