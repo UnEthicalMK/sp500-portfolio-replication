@@ -1,3 +1,6 @@
+import numpy as np
+import torch
+
 from src.data_pipeline import (
     get_sp500_tickers,
     download_prices,
@@ -25,267 +28,122 @@ from src.backtest import (
     print_results_table
 )
 
-import numpy as np
-import torch
-
 
 if __name__ == "__main__":
 
+    # =========================
+    # PHASE 1: DATA PIPELINE
+    # =========================
     print("\n=== PHASE 1 : DATA PIPELINE ===")
 
     tickers = get_sp500_tickers()
+    prices = download_prices(tickers)
+    returns = compute_log_returns(prices)
+    build_covariance_matrix(returns)
 
-    prices = download_prices(
-        tickers
-    )
+    train, val, test = split_data(returns)
 
-    returns = compute_log_returns(
-        prices
-    )
+    # =========================
+    # PHASE 2: LASSO MODEL
+    # =========================
+    print("\n=== PHASE 2 : LASSO ===")
 
-    build_covariance_matrix(
-        returns
-    )
+    benchmark_te, _ = naive_benchmark(train, test)
 
-    train, val, test = split_data(
-        returns
-    )
+    results = sweep_alpha(train, val)
+    best = select_best_alpha(results)
 
-    print(
-        "\n=== PHASE 2 : LASSO ==="
-    )
+    selected_stocks, lasso_weights = extract_portfolio(best, train)
 
-    benchmark_te, _ = naive_benchmark(
+    plot_regularization_path(results, best["alpha"])
+
+    # =========================
+    # PHASE 3: AUTOENCODER
+    # =========================
+    print("\n=== PHASE 3 : AUTOENCODER ===")
+
+    stock_cols = [c for c in train.columns if c != "SP500"]
+
+    model, selected_idx = train_autoencoder(
         train,
-        test
-    )
-
-    results = sweep_alpha(
-        train,
-        val
-    )
-
-    best = select_best_alpha(
-        results
-    )
-
-    (
         selected_stocks,
-        lasso_weights
-    ) = extract_portfolio(
-        best,
-        train
-    )
-
-    plot_regularization_path(
-        results,
-        best["alpha"]
-    )
-
-    print(
-        "\n=== PHASE 3 : AUTOENCODER ==="
-    )
-
-    stock_cols = [
-
-        c
-
-        for c in train.columns
-
-        if c != "SP500"
-
-    ]
-
-    model, selected_idx = (
-
-        train_autoencoder(
-
-            train,
-
-            selected_stocks,
-
-            stock_cols
-
-        )
-
-    )
-
-    plot_latent_factors(
-
-        model,
-
-        train,
-
         stock_cols
-
     )
 
-    print(
-        "\n=== PHASE 4 : BACKTEST ==="
-    )
+    plot_latent_factors(model, train, stock_cols)
 
+    # =========================
+    # PHASE 4: BACKTEST
+    # =========================
+    print("\n=== PHASE 4 : BACKTEST ===")
+
+    # --- Lasso portfolio returns ---
     lasso_ret = (
-
-        test[
-            selected_stocks
-        ]
-
-        *
-
-        lasso_weights
-
+        test[selected_stocks] * lasso_weights
     ).sum(axis=1).values
 
+    # --- Autoencoder inference ---
     model.eval()
 
     X_test = torch.FloatTensor(
-
-        test[
-            stock_cols
-        ]
-
-        .values
-
-        .astype("float32")
-
+        test[stock_cols].values.astype("float32")
     )
 
     with torch.no_grad():
+        full_out, _ = model(X_test)
 
-        full_out, _ = model(
-            X_test
-        )
+    # Average decoder output as proxy weights
+    ae_weights = full_out[:, selected_idx].mean(dim=0).numpy()
 
-    ae_weights = (
-
-        full_out[
-            :,
-            selected_idx
-        ]
-
-        .mean(dim=0)
-
-        .numpy()
-
-    )
-
-    weight_sum = (
-
-        ae_weights.sum()
-    )
+    # Handle numerical collapse case
+    weight_sum = ae_weights.sum()
 
     if abs(weight_sum) < 1e-12:
-
-        print(
-            "AE weights collapsed."
-        )
-
-        ae_weights = (
-
-            np.ones(
-                len(selected_idx)
-            )
-
-            /
-
-            len(selected_idx)
-
-        )
-
+        print("AE weights collapsed. Using uniform weights.")
+        ae_weights = np.ones(len(selected_idx)) / len(selected_idx)
     else:
+        ae_weights = ae_weights / weight_sum
 
-        ae_weights = (
-
-            ae_weights
-
-            /
-
-            weight_sum
-
-        )
-
+    # --- AE portfolio returns ---
     ae_ret = (
-
-        test[
-            selected_stocks
-        ]
-
-        *
-
-        ae_weights
-
+        test[selected_stocks] * ae_weights
     ).sum(axis=1).values
 
-    index_ret = (
+    # --- Benchmark returns ---
+    index_ret = test["SP500"].values
 
-        test[
-            "SP500"
-        ].values
-
-    )
-
-    lasso_metrics = (
-
-        evaluate_model(
-
-            "Lasso",
-
-            lasso_ret,
-
-            index_ret,
-
-            len(
-                selected_stocks
-            )
-
-        )
-
-    )
-
-    ae_metrics = (
-
-        evaluate_model(
-
-            "Autoencoder",
-
-            ae_ret,
-
-            index_ret,
-
-            len(
-                selected_stocks
-            )
-
-        )
-
-    )
-
-    plot_backtest(
-
+    # =========================
+    # MODEL EVALUATION
+    # =========================
+    lasso_metrics = evaluate_model(
+        "Lasso",
         lasso_ret,
-
-        ae_ret,
-
         index_ret,
+        len(selected_stocks)
+    )
 
+    ae_metrics = evaluate_model(
+        "Autoencoder",
+        ae_ret,
+        index_ret,
+        len(selected_stocks)
+    )
+
+    # =========================
+    # VISUALIZATION
+    # =========================
+    plot_backtest(
+        lasso_ret,
+        ae_ret,
+        index_ret,
         test.index
-
     )
 
     print_results_table(
-
         lasso_metrics,
-
         ae_metrics,
-
         benchmark_te
-
     )
 
-    print(
-        "\n=== DONE ==="
-    )
-
-    print(
-        "Check results/"
-    )
+    print("\n=== DONE ===")
+    print("Check results/")
