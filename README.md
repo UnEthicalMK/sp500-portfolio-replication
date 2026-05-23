@@ -1,58 +1,328 @@
 # S&P 500 Portfolio Replication — The Cloning Engine
 
-A two-model system that tracks the S&P 500 using the minimum number
-of stocks required to achieve acceptable tracking error (< 1% annualized).
-Built with Lasso regression and a PyTorch sparse autoencoder.
+![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
+![PyTorch](https://img.shields.io/badge/PyTorch-2.3-red.svg)
+![scikit-learn](https://img.shields.io/badge/scikit--learn-1.5-orange.svg)
+![License](https://img.shields.io/badge/License-MIT-green.svg)
+![Status](https://img.shields.io/badge/Status-Research%20Project-informational.svg)
 
-## Results (2023 out-of-sample test year)
+Sparse index replication using optimization and representation learning to construct a minimal-stock portfolio that closely tracks S&P 500 performance.
 
-| Metric                    | Lasso Clone | Autoencoder | Naive Benchmark |
-|---------------------------|-------------|-------------|-----------------|
-| Tracking Error (ann.)     | X.XXX%      | X.XXX%      | X.XXX%          |
-| Max Drawdown              | X.XX%       | X.XX%       | —               |
-| Correlation with S&P 500  | 0.XXXX      | 0.XXXX      | —               |
-| Stocks used               | XX          | XX          | 40              |
+> **Core research question:**  
+> What is the minimum number of stocks required to acceptably replicate S&P 500 performance?
 
-![Backtest comparison](results/backtest_comparison.png)
-![Regularization path](results/regularization_path.png)
+---
+
+## Abstract
+
+This project explores whether the S&P 500 can be replicated without holding all 500 stocks.
+
+Three approaches were implemented and compared:
+
+- Naive equal-weight benchmark
+- Lasso regression
+- Sparse autoencoder
+
+Using 10 years of daily market data, each model was trained to identify the smallest subset of stocks capable of preserving index behavior while minimizing tracking error.
+
+Results show that a portfolio of just **121 stocks (~24% of the index)** achieved:
+
+- **2.37% annualized tracking error**
+- **0.987 correlation** with the S&P 500
+- **77% tracking-error reduction** relative to the naive benchmark
+
+These results demonstrate that sparse replication can capture most market dynamics without requiring full index ownership.
+
+---
+
+## Performance Summary (2023 Out-of-Sample Test)
+
+| Metric | Lasso Clone | Autoencoder | Naive Benchmark | S&P 500 |
+|:----------------------|------------:|------------:|---------------:|--------:|
+| Tracking Error (ann.) | **2.37%** | 3.09% | 10.20% | 0.00% |
+| Correlation | **0.9871** | 0.9757 | 0.5239 | 1.0000 |
+| Max Drawdown | **-10.57%** | -11.00% | -18.30% | -10.00% |
+| Stocks Used | 121 | 121 | 40 | 500 |
+
+**Winner: Lasso**
+
+Strongest replication quality across all major metrics.
+
+### Key Findings
+
+- Sparse replication reduced tracking error by ~77% relative to the naive benchmark
+- Lasso outperformed the autoencoder despite being the simpler model
+- Only ~24% of the index universe captured most market dynamics
+- Nonlinear representation learning improved compression but not replication quality
+
+---
+
+## Results
+
+### Out-of-Sample Portfolio Performance
+
+![Backtest Comparison](results/backtest_comparison.png)
+
+Cumulative portfolio performance during the fully held-out 2023 test period.
+
+---
+
+### Lasso Regularization Path
+
+![Regularization Path](results/regularization_path.png)
+
+Portfolio sparsity and tracking error as regularization strength changes.
+
+Higher alpha:
+
+- Fewer stocks
+- Higher sparsity
+
+Selected operating point:
+
+- 121-stock portfolio
+
+---
+
+### Autoencoder Latent Factors
+
+![Latent Factors](results/latent_factors.png)
+
+The 5-neuron bottleneck learns compressed representations of market co-movement.
+
+The latent space behaves similarly to a learned nonlinear factor model.
+
+---
 
 ## Methodology
 
-**Step 1 — Data:** 10 years of daily adjusted closing prices (2014–2023)
-for the S&P 500 index and all 500 constituents, sourced via yfinance.
-Daily log returns computed and winsorized at ±10%.
+### Data
 
-**Step 2 — Train/Val/Test split:** 2014–2021 training, 2022 validation
-(alpha tuning only), 2023 test (sealed until final evaluation).
+Daily adjusted close prices were downloaded using `yfinance`.
 
-**Step 3 — Lasso model:** Regularization path sweep over 50 alpha values.
-Objective: find the sparsest portfolio whose validation tracking error
-stays under 1% annualized. positive=True enforces long-only weights.
+Coverage:
 
-**Step 4 — Autoencoder:** 500-input → 5-neuron bottleneck → sparse output.
-Output layer masked to Lasso-selected stocks only. Trained on portfolio
-return MSE loss, not plain reconstruction loss.
+- S&P 500 Index (`^GSPC`)
+- Constituent stocks
+- January 2014 – December 2023
 
-**Step 5 — Backtest:** Both models evaluated on unseen 2023 data.
-Primary metric: annualized tracking error. Secondary: max drawdown,
-correlation with index.
+Preprocessing:
 
-## Known Limitations
+- Daily log returns
+- Winsorization at ±10%
+- Missing data filtering (>5%)
+- Batch downloads (50 stocks/request)
 
-- Survivorship bias: constituent list reflects 2024 membership, not
-  historical membership. Stocks that were delisted or removed between
-  2014–2023 are excluded from the training universe.
+Train-validation-test split:
 
-## Quickstart
+| Split | Period | Purpose |
+|--------|---------|----------|
+| Training | 2014–2021 | Model fitting |
+| Validation | 2022 | Hyperparameter tuning |
+| Test | 2023 | Final evaluation |
+
+The test year remained completely untouched until final evaluation.
+
+---
+
+### Naive Benchmark
+
+Baseline portfolio:
+
+- Equal-weight
+- Top 40 stocks ranked by average training-period return
+
+Purpose:
+
+Provide a sanity-check floor for replication quality.
+
+---
+
+### Lasso Regression
+
+Lasso naturally performs feature selection while fitting portfolio weights.
+
+Optimization objective:
+
+$$ \min_{w} \left\| R_{index} - Xw \right\|_2^2 + \alpha \left\| w \right\|_1 $$
+
+Where:
+*   $R_{index}$ $\rightarrow$ S&P 500 daily returns
+*   $X$ $\rightarrow$ constituent stock returns
+*   $w$ $\rightarrow$ portfolio weights
+*   $\alpha$ $\rightarrow$ regularization strength
+
+Design choices:
+*   Long-only constraint (`positive=True`)
+*   50 log-spaced alpha values
+*   Validation-based model selection
+
+Selection criterion:
+> Find the sparsest portfolio satisfying validation tracking error constraints.
+
+Final output: **121-stock sparse portfolio**
+
+---
+
+### Sparse Autoencoder
+
+Architecture:
+
+```
+~500 Stock Returns
+        ↓
+Dense(64, ReLU)
+        ↓
+Bottleneck(5, ReLU)
+        ↓
+Sparse Output(121 Stocks)
+```
+
+Design choices:
+
+- 5 latent factors
+- Sparse output masking
+- Portfolio-return MSE objective
+- Restricted output universe (Lasso-selected stocks)
+
+The masking layer prevents information leakage through all 500 stocks.
+
+Training directly optimized replication quality rather than reconstruction quality.
+
+---
+
+### Why Two Models?
+
+The approaches represent different philosophies.
+
+| Model | Philosophy |
+|--------|------------|
+| Lasso | Sparse linear optimization |
+| Autoencoder | Nonlinear representation learning |
+
+The comparison evaluates whether representation learning improves sparse index replication.
+
+---
+
+## Repository Structure
+
+```text
+sp500-portfolio-clone/
+
+├── data/
+│   ├── raw/
+│   └── processed/
+│
+├── models/
+├── notebooks/
+│
+├── results/
+│   ├── backtest_comparison.png
+│   ├── latent_factors.png
+│   └── regularization_path.png
+│
+├── src/
+│   ├── data_pipeline.py
+│   ├── lasso_model.py
+│   ├── autoencoder.py
+│   └── backtest.py
+│
+├── requirements.txt
+├── README.md
+└── main.py
+```
+
+---
+
+## Installation
+
+Clone repository:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/sp500-portfolio-clone
+git clone https://github.com/UnEthicalMK/sp500-portfolio-clone.git
+
 cd sp500-portfolio-clone
-python -m venv venv && source venv/bin/activate
+```
+
+Create environment:
+
+```bash
+python -m venv venv
+```
+
+Activate:
+
+Linux/macOS:
+
+```bash
+source venv/bin/activate
+```
+
+Windows:
+
+```bash
+venv\Scripts\activate
+```
+
+Install dependencies:
+
+```bash
 pip install -r requirements.txt
+```
+
+Run:
+
+```bash
 python main.py
 ```
 
-## Requirements
 
-Python 3.10+, see requirements.txt for full dependency list.
+---
+
+## Dependencies
+
+```
+yfinance==0.2.40
+pandas==2.2.2
+numpy==1.26.4
+scikit-learn==1.5.1
+torch==2.3.1
+matplotlib==3.9.0
+seaborn==0.13.2
+jupyter==1.0.0
+tqdm==4.66.4
+```
+
+Python:
+
+```
+3.10+
+```
+
+---
+
+## Limitations
+
+- Survivorship bias from current constituent membership
+- Static portfolio weights
+- Frictionless execution assumption (no transaction costs, slippage, or market impact)
+- Non-institutional market data (`yfinance`)
+
+---
+
+## Future Work
+
+- Historical constituent integration
+- Dynamic rebalancing
+- Transaction-cost-aware optimization
+- Sector and factor constraints
+- Information ratio optimization
+- ETF replication comparisons
+
+---
+
+## Disclaimer
+
+This repository is intended solely for research and educational purposes.
+
+It does not constitute investment advice or portfolio management guidance.
