@@ -1,12 +1,13 @@
-# Data files (too large for GitHub, regenerate with data_pipeline.py)
+# Data — too large for GitHub, regenerate with data_pipeline.py
 data/raw/
 data/processed/
 
-# Saved models (regenerate by running the training scripts)
+# Saved model weights — regenerate by running main.py
 models/
 
 # Python environment
 venv/
+.venv/
 __pycache__/
 *.pyc
 *.pyo
@@ -16,10 +17,12 @@ build/
 
 # Jupyter
 .ipynb_checkpoints/
+*.ipynb
 
-# OS files
+# OS
 .DS_Store
 Thumbs.db
 
 # Environment variables
 .env
+.env.local
