@@ -25,11 +25,11 @@ Three approaches were implemented and compared:
 
 Using 10 years of daily market data, each model was trained to identify the smallest subset of stocks capable of preserving index behavior while minimizing tracking error.
 
-Results show that a portfolio of just **121 stocks (~24% of the index)** achieved:
+Results show that a portfolio of just **98 stocks (~20% of the index)** achieved:
 
-- **2.37% annualized tracking error**
-- **0.987 correlation** with the S&P 500
-- **77% tracking-error reduction** relative to the naive benchmark
+- **3.025% annualized tracking error**
+- **0.984 correlation** with the S&P 500
+- **70% tracking-error reduction** relative to the naive benchmark
 
 These results demonstrate that sparse replication can capture most market dynamics without requiring full index ownership.
 
@@ -39,10 +39,12 @@ These results demonstrate that sparse replication can capture most market dynami
 
 | Metric | Lasso Clone | Autoencoder | Naive Benchmark | S&P 500 |
 |:----------------------|------------:|------------:|---------------:|--------:|
-| Tracking Error (ann.) | **2.37%** | 3.09% | 10.20% | 0.00% |
-| Correlation | **0.9871** | 0.9757 | 0.5239 | 1.0000 |
-| Max Drawdown | **-10.57%** | -11.00% | -18.30% | -10.00% |
-| Stocks Used | 121 | 121 | 40 | 500 |
+| Tracking Error | **3.025%** | 3.734% | 9.931% | 0.00% |
+| Correlation | **0.9838** | 0.9702 | 0.8977 | 1.0000 |
+| Max Drawdown | **-10.58%** | -12.28% | -13.37% | -10.00% |
+| Stocks Used | 98 | 98 | 40 | 500 |
+
+> Transaction costs modelled as a one-time entry cost of **10 bps** per position (5 bps commission + 5 bps slippage). Net figures reflect post-cost performance for Lasso and Autoencoder portfolios.
 
 **Winner: Lasso**
 
@@ -50,9 +52,9 @@ Strongest replication quality across all major metrics.
 
 ### Key Findings
 
-- Sparse replication reduced tracking error by ~77% relative to the naive benchmark
+- Sparse replication reduced tracking error by ~70% relative to the naive benchmark
 - Lasso outperformed the autoencoder despite being the simpler model
-- Only ~24% of the index universe captured most market dynamics
+- Only ~20% of the index universe captured most market dynamics
 - Nonlinear representation learning improved compression but not replication quality
 
 ---
@@ -80,7 +82,7 @@ Higher alpha:
 
 Selected operating point:
 
-- 121-stock portfolio
+- 98-stock portfolio
 
 ---
 
@@ -160,7 +162,7 @@ Design choices:
 Selection criterion:
 > Find the sparsest portfolio satisfying validation tracking error constraints.
 
-Final output: **121-stock sparse portfolio**
+Final output: **98-stock sparse portfolio**
 
 ---
 
@@ -175,7 +177,7 @@ Dense(64, ReLU)
         ↓
 Bottleneck(5, ReLU)
         ↓
-Sparse Output(121 Stocks)
+Sparse Output(98 Stocks)
 ```
 
 Design choices:
@@ -305,7 +307,7 @@ Python:
 
 - Survivorship bias from current constituent membership
 - Static portfolio weights
-- Frictionless execution assumption (no transaction costs, slippage, or market impact)
+- Transaction costs modelled as a simplified one-time entry (10 bps); ongoing rebalancing costs not captured
 - Non-institutional market data (`yfinance`)
 
 ---
@@ -315,9 +317,8 @@ Python:
 - Historical constituent integration
 - Dynamic rebalancing
 - Transaction-cost-aware optimization
-- Sector and factor constraints
 - Information ratio optimization
-- ETF replication comparisons
+
 
 ---
 
